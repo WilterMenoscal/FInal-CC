@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Predicción de Ingresos</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+    <style>
+        body {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #0f172a 0%, #4338ca 100%);
+            color: #0f172a;
+        }
+        .dashboard-card {
+            background: rgba(255, 255, 255, 0.96);
+            backdrop-filter: blur(6px);
+            border-radius: 1rem;
+            padding: 2.5rem;
+            box-shadow: 0 20px 50px rgba(15, 23, 42, 0.25);
+        }
+        .section-title {
+            border-left: 6px solid #4338ca;
+            padding-left: 0.75rem;
+            font-weight: 600;
+            color: #1e1b4b;
+        }
+        .plot-wrapper {
+            background: #f8fafc;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.08);
+        }
+        .table-wrapper {
+            background: #fff;
+            border-radius: 0.75rem;
+            border: 1px solid rgba(148, 163, 184, 0.35);
+            padding: 1.5rem;
+            box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+        }
+        .table-wrapper table {
+            margin-bottom: 0;
+        }
+        .form-label {
+            font-weight: 600;
+            color: #312e81;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #4338ca, #1d4ed8);
+            border: none;
+            font-weight: 600;
+            box-shadow: 0 12px 24px rgba(67, 56, 202, 0.35);
+        }
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #312e81, #1e40af);
+        }
+    </style>
+</head>
+<body class="p-4">
+    <div class="container">
+        <div class="dashboard-card mx-auto">
+            <h1 class="text-center mb-4 text-uppercase fw-bold">Predicción de Ingresos por Centro Comercial</h1>
+
+            {% if error %}
+                <div class="alert alert-danger shadow-sm">{{ error }}</div>
+            {% endif %}
+
+            <form action="/predict" method="post" class="row g-3 align-items-end mb-5">
+                <div class="col-md-3">
+                    <label for="id_cc" class="form-label">Centro Comercial (id_cc)</label>
+                    <select name="id_cc" id="id_cc" class="form-select shadow-sm" required>
+                        {% for cc in centros %}
+                            <option value="{{ cc }}" {% if selected_cc == cc %}selected{% endif %}>{{ cc }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label for="fecha_inicio" class="form-label">Fecha inicio</label>
+                    <input type="date" name="fecha_inicio" id="fecha_inicio" class="form-control shadow-sm" value="{{ selected_start }}" required>
+                </div>
+                <div class="col-md-3">
+                    <label for="fecha_fin" class="form-label">Fecha fin (opcional)</label>
+                    <input type="date" name="fecha_fin" id="fecha_fin" class="form-control shadow-sm" value="{{ selected_end }}">
+                </div>
+                <div class="col-md-1 d-grid">
+                    <button type="submit" class="btn btn-primary btn-lg shadow">Predecir</button>
+                </div>
+            </form>
+
+            {% if plot_detalle %}
+                <div class="mb-4">
+                    <h2 class="section-title mb-3">Ingresos por puerta</h2>
+                    <div class="plot-wrapper">
+                        {{ plot_detalle|safe }}
+                    </div>
+                </div>
+            {% endif %}
+
+            {% if plot_total %}
+                <div class="mb-4">
+                    <h2 class="section-title mb-3">Ingresos totales del centro</h2>
+                    <div class="plot-wrapper">
+                        {{ plot_total|safe }}
+                    </div>
+                </div>
+            {% endif %}
+
+            {% if plot_daily %}
+                <div class="mb-5">
+                    <h2 class="section-title mb-3">Ingresos totales diarios</h2>
+                    <div class="plot-wrapper">
+                        {{ plot_daily|safe }}
+                    </div>
+                </div>
+            {% endif %}
+
+            <div class="card mb-4 shadow-sm border-0 d-none" id="table-switcher" style="background: rgba(15,23,42,0.04);">
+                <div class="card-body">
+                    <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-3">
+                        <h3 class="h5 mb-0 text-uppercase text-primary">Tabla a mostrar</h3>
+                        <div class="d-flex gap-2" id="table-btn-group">
+                            <button class="btn btn-outline-primary" type="button" data-table="puertas">Puertas por hora</button>
+                            <button class="btn btn-outline-primary" type="button" data-table="horaria">Ingresos por hora</button>
+                            <button class="btn btn-outline-primary" type="button" data-table="diaria">Ingresos diarios</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% set table_titles = {
+                'puertas': 'Tabla: Puertas por hora',
+                'horaria': 'Tabla: Ingresos por hora',
+                'diaria': 'Tabla: Ingresos diarios'
+            } %}
+
+            <div class="table-wrapper d-none" id="table-wrapper">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h3 class="h5 mb-0 text-uppercase text-primary" id="table-title">
+                        {{ table_titles.get(selected_table, 'Tabla de resultados') }}
+                    </h3>
+                    <span class="badge text-bg-light border border-primary-subtle text-primary-emphasis">
+                        Vista seleccionada
+                    </span>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped table-sm mb-0">
+                        <thead></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div class="text-center mt-3">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="btn-ver-mas">
+                        Ver más
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const buttons = document.querySelectorAll('button[data-table]');
+        const switcherCard = document.getElementById('table-switcher');
+        const tableWrapper = document.getElementById('table-wrapper');
+        const tableTitle = document.getElementById('table-title');
+        const tableHead = tableWrapper.querySelector('thead');
+        const tableBody = tableWrapper.querySelector('tbody');
+        const btnVerMas = document.getElementById('btn-ver-mas');
+        const titles = {{ table_titles|tojson|safe }};
+        const tablePayload = {{ table_payload|safe }};
+        let currentView = "{{ selected_table }}";
+        let currentLimit = 10;
+
+        function renderTable(view, limit = 10) {
+            if (!tablePayload || Object.keys(tablePayload).length === 0) {
+                switcherCard.classList.add('d-none');
+                tableWrapper.classList.add('d-none');
+                return;
+            }
+            const payload = tablePayload?.[view];
+            if (!payload || !payload.data || payload.data.length === 0) {
+                switcherCard.classList.add('d-none');
+                tableWrapper.classList.add('d-none');
+                return;
+            }
+
+            switcherCard.classList.remove('d-none');
+            currentView = view;
+            currentLimit = Math.min(limit, payload.data.length);
+
+            const columns = payload.columns;
+            const rows = payload.data.slice(0, currentLimit);
+
+            tableHead.innerHTML = `
+                <tr>
+                    ${columns.map(col => `<th scope="col">${col}</th>`).join('')}
+                </tr>
+            `;
+
+            tableBody.innerHTML = rows
+                .map(row => {
+                    const cells = columns
+                        .map(col => {
+                            const value = row[col];
+                            if (typeof value === 'number' && !Number.isNaN(value)) {
+                                return `<td>${value.toLocaleString('es-ES', { maximumFractionDigits: 0 })}</td>`;
+                            }
+                            return `<td>${value ?? ''}</td>`;
+                        })
+                        .join('');
+                    return `<tr>${cells}</tr>`;
+                })
+                .join('');
+
+            tableTitle.textContent = titles[view] || 'Tabla de resultados';
+            tableWrapper.classList.remove('d-none');
+
+            // Botón ver más
+            if (currentLimit >= payload.data.length) {
+                btnVerMas.classList.add('d-none');
+            } else {
+                btnVerMas.classList.remove('d-none');
+            }
+
+            // Actualizar estados de botones
+            buttons.forEach(btn =>
+                btn.classList.toggle('active', btn.dataset.table === view)
+            );
+        }
+
+        buttons.forEach(btn => {
+            btn.addEventListener('click', () => renderTable(btn.dataset.table, 10));
+        });
+
+        btnVerMas.addEventListener('click', () => {
+            const payload = tablePayload?.[currentView];
+            if (!payload) return;
+            renderTable(currentView, currentLimit + 10);
+        });
+
+        if (tablePayload && Object.keys(tablePayload).length > 0) {
+            renderTable(currentView, 10);
+        } else {
+            switcherCard.classList.add('d-none');
+            tableWrapper.classList.add('d-none');
+        }
+    </script>
+</body>
+</html>
